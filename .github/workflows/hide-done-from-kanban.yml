@@ -1,0 +1,213 @@
+name: Hide Done issues from Kanban
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+
+  workflow_dispatch:
+
+jobs:
+  hide-done:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Hide Done items from Kanban
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          ORG_NAME: "tcc-dos-guris"
+          PROJECT_NUMBER: "2"
+
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import subprocess
+          from datetime import datetime, timezone, timedelta
+
+          org = os.environ["ORG_NAME"]
+          project_number = int(os.environ["PROJECT_NUMBER"])
+
+          query = """
+          query($org: String!, $number: Int!) {
+            organization(login: $org) {
+              projectV2(number: $number) {
+                id
+                title
+
+                fields(first: 50) {
+                  nodes {
+                    ... on ProjectV2SingleSelectField {
+                      id
+                      name
+                      options {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+
+                items(first: 100) {
+                  nodes {
+                    id
+
+                    content {
+                      ... on Issue {
+                        number
+                        title
+                        url
+                      }
+                    }
+
+                    status: fieldValueByName(name: "Status") {
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                        updatedAt
+                      }
+                    }
+
+                    kanban: fieldValueByName(name: "Kanban") {
+                      ... on ProjectV2ItemFieldSingleSelectValue {
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          """
+
+          result = subprocess.run(
+              [
+                  "gh",
+                  "api",
+                  "graphql",
+                  "-f",
+                  f"query={query}",
+                  "-f",
+                  f"org={org}",
+                  "-F",
+                  f"number={project_number}",
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          )
+
+          data = json.loads(result.stdout)
+
+          project = data["data"]["organization"]["projectV2"]
+
+          if not project:
+              raise Exception("Project não encontrado.")
+
+          print(f'Project encontrado: {project["title"]}')
+
+          project_id = project["id"]
+
+          kanban_field_id = None
+          hidden_option_id = None
+
+          for field in project["fields"]["nodes"]:
+              if not field:
+                  continue
+
+              if field.get("name") == "Kanban":
+                  kanban_field_id = field["id"]
+
+                  for option in field["options"]:
+                      if option["name"] == "Hidden":
+                          hidden_option_id = option["id"]
+
+          if not kanban_field_id:
+              raise Exception('Campo "Kanban" não encontrado.')
+
+          if not hidden_option_id:
+              raise Exception('Opção "Hidden" não encontrada.')
+
+          now = datetime.now(timezone.utc)
+
+          # teste inicial: 2 minutos
+          minimum_age = timedelta(minutes=2)
+
+          for item in project["items"]["nodes"]:
+
+              status = item.get("status")
+
+              if not status:
+                  continue
+
+              if status.get("name") != "Done":
+                  continue
+
+              kanban = item.get("kanban")
+
+              if kanban and kanban.get("name") == "Hidden":
+                  continue
+
+              updated_at = datetime.fromisoformat(
+                  status["updatedAt"].replace("Z", "+00:00")
+              )
+
+              age = now - updated_at
+
+              content = item.get("content") or {}
+
+              number = content.get("number", "-")
+              title = content.get("title", "Sem título")
+
+              print(
+                  f"#{number} {title} | "
+                  f"Done há {age.total_seconds() / 60:.1f} minutos"
+              )
+
+              if age < minimum_age:
+                  continue
+
+              mutation = """
+              mutation(
+                $project: ID!,
+                $item: ID!,
+                $field: ID!,
+                $option: String!
+              ) {
+                updateProjectV2ItemFieldValue(
+                  input: {
+                    projectId: $project
+                    itemId: $item
+                    fieldId: $field
+                    value: {
+                      singleSelectOptionId: $option
+                    }
+                  }
+                ) {
+                  projectV2Item {
+                    id
+                  }
+                }
+              }
+              """
+
+              subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      "graphql",
+                      "-f",
+                      f"query={mutation}",
+                      "-f",
+                      f"project={project_id}",
+                      "-f",
+                      f"item={item['id']}",
+                      "-f",
+                      f"field={kanban_field_id}",
+                      "-f",
+                      f"option={hidden_option_id}",
+                  ],
+                  check=True,
+              )
+
+              print(f"✓ #{number} escondida do Kanban.")
+
+          PY
