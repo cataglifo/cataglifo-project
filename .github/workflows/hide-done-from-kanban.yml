@@ -129,8 +129,8 @@ jobs:
           now = datetime.now(timezone.utc)
 
           # teste inicial: 2 minutos
-          minimum_age = timedelta(minutes=2)
-
+          minimum_age = timedelta(hours=1)
+          
           for item in project["items"]["nodes"]:
 
               status = item.get("status")
