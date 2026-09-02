@@ -14,7 +14,7 @@ jobs:
       - name: Hide Done items from Kanban
         env:
           GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-          ORG_NAME: "tcc-dos-guris"
+          ORG_NAME: "cataglifo"
           PROJECT_NUMBER: "2"
 
         run: |
