@@ -79,21 +79,25 @@ jobs:
           """
 
           result = subprocess.run(
-              [
-                  "gh",
-                  "api",
-                  "graphql",
-                  "-f",
-                  f"query={query}",
-                  "-f",
-                  f"org={org}",
-                  "-F",
-                  f"number={project_number}",
-              ],
-              capture_output=True,
-              text=True,
-              check=True,
-          )
+    [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={query}",
+        "-f",
+        f"org={org}",
+        "-F",
+        f"number={project_number}",
+    ],
+    capture_output=True,
+    text=True,
+)
+
+if result.returncode != 0:
+    print("Erro retornado pelo GitHub:")
+    print(result.stderr)
+    raise Exception("Falha ao consultar o GitHub Project.")
 
           data = json.loads(result.stdout)
 
