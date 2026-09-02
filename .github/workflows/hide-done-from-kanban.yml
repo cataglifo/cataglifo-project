@@ -2,7 +2,7 @@ name: Hide Done issues from Kanban
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
 
   workflow_dispatch:
 
@@ -24,8 +24,21 @@ jobs:
           import subprocess
           from datetime import datetime, timezone, timedelta
 
-          org = os.environ["ORG_NAME"]
-          project_number = int(os.environ["PROJECT_NUMBER"])
+          ORG_NAME = os.environ["ORG_NAME"]
+          PROJECT_NUMBER = int(os.environ["PROJECT_NUMBER"])
+
+          STATUS_FIELD_NAME = "Status"
+          DONE_OPTION_NAME = "Done"
+
+          KANBAN_FIELD_NAME = "Kanban"
+          HIDDEN_OPTION_NAME = "Hidden"
+
+          MINIMUM_AGE = timedelta(hours=1)
+
+          print("=== Cataglifo Kanban Automation ===")
+          print(f"Organização: {ORG_NAME}")
+          print(f"Project number: {PROJECT_NUMBER}")
+          print()
 
           query = """
           query($org: String!, $number: Int!) {
@@ -34,7 +47,7 @@ jobs:
                 id
                 title
 
-                fields(first: 50) {
+                fields(first: 100) {
                   nodes {
                     ... on ProjectV2SingleSelectField {
                       id
@@ -56,6 +69,14 @@ jobs:
                         number
                         title
                         url
+                        state
+                      }
+
+                      ... on PullRequest {
+                        number
+                        title
+                        url
+                        state
                       }
                     }
 
@@ -79,36 +100,66 @@ jobs:
           """
 
           result = subprocess.run(
-    [
-        "gh",
-        "api",
-        "graphql",
-        "-f",
-        f"query={query}",
-        "-f",
-        f"org={org}",
-        "-F",
-        f"number={project_number}",
-    ],
-    capture_output=True,
-    text=True,
-)
+              [
+                  "gh",
+                  "api",
+                  "graphql",
+                  "-f",
+                  f"query={query}",
+                  "-f",
+                  f"org={ORG_NAME}",
+                  "-F",
+                  f"number={PROJECT_NUMBER}",
+              ],
+              capture_output=True,
+              text=True,
+          )
 
-if result.returncode != 0:
-    print("Erro retornado pelo GitHub:")
-    print(result.stderr)
-    raise Exception("Falha ao consultar o GitHub Project.")
+          if result.returncode != 0:
+              print("ERRO ao consultar o GitHub Project.")
+              print()
+              print("STDOUT:")
+              print(result.stdout)
+              print()
+              print("STDERR:")
+              print(result.stderr)
+              raise SystemExit(1)
 
-          data = json.loads(result.stdout)
+          try:
+              data = json.loads(result.stdout)
+          except json.JSONDecodeError:
+              print("O GitHub retornou uma resposta que não é JSON válido:")
+              print(result.stdout)
+              raise SystemExit(1)
 
-          project = data["data"]["organization"]["projectV2"]
+          if data.get("errors"):
+              print("A API GraphQL retornou erros:")
+              print(json.dumps(data["errors"], indent=2))
+              raise SystemExit(1)
 
-          if not project:
-              raise Exception("Project não encontrado.")
+          organization = data.get("data", {}).get("organization")
 
-          print(f'Project encontrado: {project["title"]}')
+          if organization is None:
+              print(
+                  f'ERRO: organização "{ORG_NAME}" não encontrada '
+                  "ou o token não possui acesso."
+              )
+              raise SystemExit(1)
+
+          project = organization.get("projectV2")
+
+          if project is None:
+              print(
+                  f"ERRO: Project #{PROJECT_NUMBER} não encontrado "
+                  f'na organização "{ORG_NAME}".'
+              )
+              raise SystemExit(1)
 
           project_id = project["id"]
+
+          print(f'Project encontrado: {project["title"]}')
+          print(f"Project ID: {project_id}")
+          print()
 
           kanban_field_id = None
           hidden_option_id = None
@@ -117,41 +168,91 @@ if result.returncode != 0:
               if not field:
                   continue
 
-              if field.get("name") == "Kanban":
-                  kanban_field_id = field["id"]
+              if field.get("name") != KANBAN_FIELD_NAME:
+                  continue
 
-                  for option in field["options"]:
-                      if option["name"] == "Hidden":
-                          hidden_option_id = option["id"]
+              kanban_field_id = field["id"]
 
-          if not kanban_field_id:
-              raise Exception('Campo "Kanban" não encontrado.')
+              for option in field.get("options", []):
+                  if option.get("name") == HIDDEN_OPTION_NAME:
+                      hidden_option_id = option["id"]
+                      break
 
-          if not hidden_option_id:
-              raise Exception('Opção "Hidden" não encontrada.')
+          if kanban_field_id is None:
+              print(
+                  f'ERRO: campo "{KANBAN_FIELD_NAME}" '
+                  "não encontrado no Project."
+              )
+              raise SystemExit(1)
+
+          if hidden_option_id is None:
+              print(
+                  f'ERRO: opção "{HIDDEN_OPTION_NAME}" '
+                  f'não encontrada no campo "{KANBAN_FIELD_NAME}".'
+              )
+              raise SystemExit(1)
+
+          print(f'Campo "{KANBAN_FIELD_NAME}" encontrado.')
+          print(f'Opção "{HIDDEN_OPTION_NAME}" encontrada.')
+          print()
 
           now = datetime.now(timezone.utc)
 
-          # teste inicial: 2 minutos
-          minimum_age = timedelta(hours=1)
-          
+          items_checked = 0
+          done_items = 0
+          hidden_items = 0
+
+          mutation = """
+          mutation(
+            $project: ID!,
+            $item: ID!,
+            $field: ID!,
+            $option: String!
+          ) {
+            updateProjectV2ItemFieldValue(
+              input: {
+                projectId: $project
+                itemId: $item
+                fieldId: $field
+                value: {
+                  singleSelectOptionId: $option
+                }
+              }
+            ) {
+              projectV2Item {
+                id
+              }
+            }
+          }
+          """
+
           for item in project["items"]["nodes"]:
+              items_checked += 1
 
               status = item.get("status")
 
               if not status:
                   continue
 
-              if status.get("name") != "Done":
+              if status.get("name") != DONE_OPTION_NAME:
                   continue
+
+              done_items += 1
 
               kanban = item.get("kanban")
 
-              if kanban and kanban.get("name") == "Hidden":
+              if kanban and kanban.get("name") == HIDDEN_OPTION_NAME:
+                  print("Item já está escondido. Ignorando.")
+                  continue
+
+              updated_at_raw = status.get("updatedAt")
+
+              if not updated_at_raw:
+                  print("Item Done sem updatedAt. Ignorando.")
                   continue
 
               updated_at = datetime.fromisoformat(
-                  status["updatedAt"].replace("Z", "+00:00")
+                  updated_at_raw.replace("Z", "+00:00")
               )
 
               age = now - updated_at
@@ -159,41 +260,21 @@ if result.returncode != 0:
               content = item.get("content") or {}
 
               number = content.get("number", "-")
-              title = content.get("title", "Sem título")
+              title = content.get("title", "Item sem título")
+
+              age_minutes = age.total_seconds() / 60
 
               print(
                   f"#{number} {title} | "
-                  f"Done há {age.total_seconds() / 60:.1f} minutos"
+                  f"Done há {age_minutes:.1f} minutos"
               )
 
-              if age < minimum_age:
+              if age < MINIMUM_AGE:
+                  print("→ Ainda não completou 1 hora.")
+                  print()
                   continue
 
-              mutation = """
-              mutation(
-                $project: ID!,
-                $item: ID!,
-                $field: ID!,
-                $option: String!
-              ) {
-                updateProjectV2ItemFieldValue(
-                  input: {
-                    projectId: $project
-                    itemId: $item
-                    fieldId: $field
-                    value: {
-                      singleSelectOptionId: $option
-                    }
-                  }
-                ) {
-                  projectV2Item {
-                    id
-                  }
-                }
-              }
-              """
-
-              subprocess.run(
+              update_result = subprocess.run(
                   [
                       "gh",
                       "api",
@@ -209,9 +290,55 @@ if result.returncode != 0:
                       "-f",
                       f"option={hidden_option_id}",
                   ],
-                  check=True,
+                  capture_output=True,
+                  text=True,
               )
 
-              print(f"✓ #{number} escondida do Kanban.")
+              if update_result.returncode != 0:
+                  print(
+                      f"ERRO ao esconder #{number} do Kanban."
+                  )
+                  print()
+                  print("STDOUT:")
+                  print(update_result.stdout)
+                  print()
+                  print("STDERR:")
+                  print(update_result.stderr)
+                  raise SystemExit(1)
+
+              try:
+                  update_data = json.loads(update_result.stdout)
+              except json.JSONDecodeError:
+                  print(
+                      f"Resposta inválida ao atualizar #{number}:"
+                  )
+                  print(update_result.stdout)
+                  raise SystemExit(1)
+
+              if update_data.get("errors"):
+                  print(
+                      f"GraphQL retornou erro ao atualizar #{number}:"
+                  )
+                  print(
+                      json.dumps(
+                          update_data["errors"],
+                          indent=2
+                      )
+                  )
+                  raise SystemExit(1)
+
+              hidden_items += 1
+
+              print(
+                  f"✓ #{number} agora está com "
+                  f'{KANBAN_FIELD_NAME} = {HIDDEN_OPTION_NAME}'
+              )
+              print()
+
+          print("=== Resumo ===")
+          print(f"Itens analisados: {items_checked}")
+          print(f"Itens em Done: {done_items}")
+          print(f"Itens escondidos nesta execução: {hidden_items}")
+          print("Automação concluída com sucesso.")
 
           PY
