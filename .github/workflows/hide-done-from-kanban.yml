@@ -13,9 +13,9 @@ jobs:
     steps:
       - name: Hide Done items from Kanban
         env:
-          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
-          ORG_NAME: "cataglifo"
-          PROJECT_NUMBER: "2"
+              GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+              ORG_NAME: "cataglifo"
+              PROJECT_NUMBER: "2"
 
         run: |
           python3 <<'PY'
