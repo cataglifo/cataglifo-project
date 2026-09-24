@@ -1,0 +1,8 @@
+26.3 Changelog
+66.0
+====
+ - 66.0.3 Migrate to fully declarative ForgeGradlePlugin and local build-logic
+ - 66.0.2 Fix players dropping items. Closes #10885
+ - 66.0.1 Fix players not drowning propely
+ - 66.0.0 26.3 - Initial update
+
