@@ -10,8 +10,8 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="cataglifo"
-version="1.0.0"
-displayName="Cataglifo"
+version="0.0.1"
+displayName="Ventos do Deserto"
 #updateJSONURL="https://example.com/updates.json" #optional
 #displayURL="https://example.com/" #optional
 #logoFile="examplemod.png" #optional
