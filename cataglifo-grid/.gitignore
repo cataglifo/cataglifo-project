@@ -1,0 +1,27 @@
+# Ambientes virtuais
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Configuracoes locais e segredos
+.env
+.env.*
+!.env.example
+
+# Sistema operacional e IDE
+.DS_Store
+__MACOSX/
+.vscode/
+.idea/
+
+# Artefatos gerados pelo treinamento
+outputs/
