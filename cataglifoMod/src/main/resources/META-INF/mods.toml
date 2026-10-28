@@ -9,29 +9,29 @@ license="All Rights Reserved"
 #clientSideOnly=true #optional, default=false
 
 [[mods]]
-modId="cataglifoMod"
+# Deve coincidir com CorpoMod.MODID; namespaces não aceitam maiúsculas.
+modId="cataglifo"
 version="1.0.0"
-displayName="cataglifoMod"
+displayName="cataglifo"
 #updateJSONURL="https://example.com/updates.json" #optional
 #displayURL="https://example.com/" #optional
 #logoFile="examplemod.png" #optional
 #credits="" #optional
-authors="YourNameHere, OtherNameHere" #optional
+authors="Equipe Cataglifo" #optional
 #displayTest="MATCH_VERSION" #optional, default=MATCH_VERSION when not clientSideOnly, else IGNORE_ALL_VERSION
 
-description='''Example mod description.
-Newline characters can be used like this, and rendered on the mods screen properly.'''
+description='''Entidade controlável e sensores para experimentos de aprendizado por reforço.'''
 
-[[dependencies.cataglifoMod]] #recommended
+[[dependencies.cataglifo]] #recommended
     modId="forge"
     mandatory=true
     versionRange="[66,)"
     ordering="NONE"
     side="BOTH"
 
-[[dependencies.cataglifoMod]] #recommended
+[[dependencies.cataglifo]] #recommended
     modId="minecraft"
     mandatory=true
-    versionRange="[26.3,26.4,)"
+    versionRange="[26.3,26.4)"
     ordering="NONE"
     side="BOTH"

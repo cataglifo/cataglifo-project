@@ -3,7 +3,7 @@ package com.cataglifoMod.corpo;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.util.Mth;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
@@ -29,15 +29,9 @@ public class CorpoEntity extends PathfinderMob {
     private static final float[] DESVIOS_YAW   = {-60, -30, 0, 30, 60};
     private static final float[] DESVIOS_PITCH = {0, 30, 60};   // positivo = olhando para baixo
 
-    // Yaw/pitch próprios da IA. Guardamos em variáveis separadas porque o
-    // LookControl do Mob tende a mexer na rotação por conta própria.
-    private float aiYaw;
-    private float aiPitch;
-    private boolean iniciado = false;
-
-    // Ação pendente, definida pela IA e aplicada no próximo tick
-    private float acaoFrente, acaoLado;
-    private boolean acaoPular;
+    // Mantém a orientação própria e expira comandos mesmo sem conexão Python.
+    private final ControleAcao controle = new ControleAcao();
+    private boolean iniciado;
 
     public CorpoEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
@@ -52,51 +46,103 @@ public class CorpoEntity extends PathfinderMob {
 
     // ================= MÃOS =================
 
-    /** A IA chama isso para definir o que o corpo faz. frente/lado em [-1, 1]. */
+    /** Chamar somente na thread do servidor. O comando padrão dura cinco ticks. */
     public void definirAcao(float frente, float lado, float giraYaw, float giraPitch, boolean pular) {
-        this.acaoFrente = Mth.clamp(frente, -1F, 1F);
-        this.acaoLado = Mth.clamp(lado, -1F, 1F);
-        this.aiYaw = Mth.wrapDegrees(this.aiYaw + giraYaw);
-        this.aiPitch = Mth.clamp(this.aiPitch + giraPitch, -90F, 90F);
-        this.acaoPular = pular;
+        definirAcao(frente, lado, giraYaw, giraPitch, pular, ControleAcao.DURACAO_PADRAO);
     }
 
-    // Chamado a cada tick no servidor, ANTES de o MoveControl/JumpControl rodarem
-    @Override
-    protected void customServerAiStep() {
-        super.customServerAiStep();
+    public void definirAcao(float frente, float lado, float giraYaw, float giraPitch,
+                            boolean pular, int duracaoTicks) {
+        exigirServidor();
+        if (!isAlive()) throw new IllegalStateException("Entidade morta não recebe ações");
+        inicializarOrientacao(); // Antes da primeira ação, para não perder a rotação recebida.
+        controle.definir(frente, lado, giraYaw, giraPitch, pular, duracaoTicks);
+    }
+
+    public void pararAcao() {
+        exigirServidor();
+        controle.parar();
+        getNavigation().stop();
+        getMoveControl().strafe(0, 0);
+        setXxa(0);
+        setZza(0);
+        setJumping(false);
+        setDeltaMovement(Vec3.ZERO);
+    }
+
+    /** Reset local para testes; episódios e recompensas de RL ainda exigem um gerenciador. */
+    public void resetarCorpo(Vec3 inicio, float yaw) {
+        exigirServidor();
+        if (!Double.isFinite(inicio.x) || !Double.isFinite(inicio.y)
+                || !Double.isFinite(inicio.z) || !Float.isFinite(yaw)) {
+            throw new IllegalArgumentException("Reset exige posição e orientação finitas");
+        }
+        // A morte deve criar uma nova entidade; não ressuscitamos um objeto em remoção.
+        if (!isAlive()) throw new IllegalStateException("Crie outra entidade após a morte");
+        pararAcao();
+        setPos(inicio.x, inicio.y, inicio.z);
+        setHealth(getMaxHealth());
+        clearFire();
+        fallDistance = 0;
+        controle.orientar(yaw, 0);
+        iniciado = true;
+        aplicarOrientacao();
+    }
+
+    private void exigirServidor() {
+        if (!(level() instanceof ServerLevel servidor) || !servidor.getServer().isSameThread()) {
+            throw new IllegalStateException("Acesse o corpo pela thread do servidor");
+        }
+    }
+
+    private void inicializarOrientacao() {
         if (!iniciado) {
-            aiYaw = getYRot();
+            controle.orientar(getYRot(), getXRot());
             iniciado = true;
         }
-        setYRot(aiYaw);
-        setYBodyRot(aiYaw);
-        setYHeadRot(aiYaw);
-        getMoveControl().strafe(acaoFrente, acaoLado); // precisa ser chamado todo tick
-        if (acaoPular) {
-            getJumpControl().jump();
-            acaoPular = false;
-        }
+    }
+
+    private void aplicarOrientacao() {
+        setYRot(controle.yaw());
+        setXRot(controle.pitch());
+        setYBodyRot(controle.yaw());
+        setYHeadRot(controle.yaw());
+    }
+
+    // A assinatura recebe ServerLevel no Minecraft 26.3.
+    @Override
+    protected void customServerAiStep(ServerLevel servidor) {
+        super.customServerAiStep(servidor);
+        inicializarOrientacao();
+        aplicarOrientacao();
+        getMoveControl().strafe(controle.frente(), controle.lado());
+        if (controle.pular()) getJumpControl().jump();
+        controle.avancar();
     }
 
     // ================= OLHOS =================
 
     public JsonObject montarObservacao() {
+        exigirServidor();
+        inicializarOrientacao();
         JsonObject obs = new JsonObject();
+        obs.addProperty("schemaVersion", 2);
+        obs.addProperty("acaoAtiva", controle.ativa());
+        obs.addProperty("morto", !isAlive());
         obs.addProperty("x", getX());
         obs.addProperty("y", getY());
         obs.addProperty("z", getZ());
         obs.addProperty("vida", getHealth());
-        //obs.addProperty("noChao", onGround());
-        //obs.addProperty("emLava", isInLava());
-        obs.addProperty("yaw", aiYaw);
-        obs.addProperty("pitch", aiPitch);
+        obs.addProperty("noChao", onGround());
+        obs.addProperty("emLava", isInLava());
+        obs.addProperty("yaw", controle.yaw());
+        obs.addProperty("pitch", controle.pitch());
 
         JsonArray raios = new JsonArray();
         Vec3 olho = getEyePosition();
         for (float dPitch : DESVIOS_PITCH) {
             for (float dYaw : DESVIOS_YAW) {
-                Vec3 dir = calculateViewVector(aiPitch + dPitch, aiYaw + dYaw);
+                Vec3 dir = calculateViewVector(controle.pitch() + dPitch, controle.yaw() + dYaw);
                 Vec3 fim = olho.add(dir.scale(ALCANCE));
                 // Fluid.ANY faz o raio "enxergar" lava e água, não só blocos sólidos
                 BlockHitResult hit = level().clip(new ClipContext(
@@ -106,10 +152,20 @@ public class CorpoEntity extends PathfinderMob {
                 r.addProperty("dyaw", dYaw);
                 r.addProperty("dpitch", dPitch);
                 if (hit.getType() == HitResult.Type.MISS) {
-                    r.addProperty("dist", -1.0);
-                    r.addProperty("bloco", "ar");
+                    // Sem colisão representa caminho livre, não uma distância negativa.
+                    r.addProperty("acertou", false);
+                    r.addProperty("dist", ALCANCE);
+                    r.addProperty("distNormalizada", 1.0);
+                    r.addProperty("bloco", "minecraft:air");
+                    r.addProperty("fluido", "minecraft:empty");
                 } else {
-                    r.addProperty("dist", olho.distanceTo(hit.getLocation()));
+                    double distancia = olho.distanceTo(hit.getLocation());
+                    r.addProperty("acertou", true);
+                    r.addProperty("dist", distancia);
+                    r.addProperty("distNormalizada", Math.clamp(distancia / ALCANCE, 0, 1));
+                    // Fluido separado identifica também água em blocos alagados.
+                    r.addProperty("fluido", BuiltInRegistries.FLUID.getKey(
+                            level().getFluidState(hit.getBlockPos()).getType()).toString());
                     BlockState estado = level().getBlockState(hit.getBlockPos());
                     r.addProperty("bloco", BuiltInRegistries.BLOCK.getKey(estado.getBlock()).toString());
                 }
@@ -123,11 +179,11 @@ public class CorpoEntity extends PathfinderMob {
     @Override
     public void tick() {
         super.tick();
-        if (level().isClientSide) return;
-        // TESTE INICIAL: imprime a observação 1x por segundo no log.
+        if (level().isClientSide()) return;
+        // Diagnóstico opt-in em DEBUG: não gerar 15 raios por entidade só para log INFO.
         // Depois, trocar por envio via socket para o Python.
-        if (tickCount % 20 == 0) {
-            CorpoMod.LOGGER.info("[corpo] {}", montarObservacao());
+        if (tickCount % 20 == 0 && CorpoMod.LOGGER.isDebugEnabled()) {
+            CorpoMod.LOGGER.debug("[corpo] {}", montarObservacao());
         }
     }
 

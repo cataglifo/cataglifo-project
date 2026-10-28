@@ -10,7 +10,7 @@ plugins {
 }
 
 version = '0.0.1'
-group = 'com.example.examplemod'
+group = 'com.cataglifoMod'
 
 // Mojang ships Java 25 to end users in 26.1+, so your mod should target Java 25.
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
@@ -24,7 +24,7 @@ minecraft {
             workingDir = layout.projectDirectory.dir('run')
 
             systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
-            systemProperty 'forge.enabledGameTestNamespaces', 'examplemod'
+            systemProperty 'forge.enabledGameTestNamespaces', 'cataglifo'
         }
 
         register('client')
@@ -38,7 +38,7 @@ minecraft {
         register('data') {
             workingDir = layout.projectDirectory.dir('run-data')
 
-            args '--mod', 'examplemod', '--all', '--output', layout.projectDirectory.dir('src/generated/resources'), '--existing', layout.projectDirectory.dir('src/main/resources')
+            args '--mod', 'cataglifo', '--all', '--output', layout.projectDirectory.dir('src/generated/resources'), '--existing', layout.projectDirectory.dir('src/main/resources')
         }
     }
 }
@@ -60,3 +60,15 @@ tasks.withType(JavaCompile).configureEach {
     // This is done by default in Java 18+, but this ensures it no matter the Java or Gradle version
     options.encoding = 'UTF-8'
 }
+
+// Regressões do controle sem iniciar cliente/servidor Minecraft.
+tasks.register('controleAcaoTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cataglifoMod.corpo.ControleAcaoTest'
+}
+tasks.named('check') { dependsOn 'controleAcaoTest' }
+
+// O harness acima possui main(), não é um teste JUnit: é executado por JavaExec.
+// Evita que o runner padrão tente descobri-lo como teste sem framework JUnit.
+tasks.named('test') { exclude '**/ControleAcaoTest.class' }
