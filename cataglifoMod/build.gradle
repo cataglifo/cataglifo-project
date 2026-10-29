@@ -67,8 +67,14 @@ tasks.register('controleAcaoTest', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath
     mainClass = 'com.cataglifoMod.corpo.ControleAcaoTest'
 }
-tasks.named('check') { dependsOn 'controleAcaoTest' }
+// Camada HTTP da API do agente, testada com uma ponte falsa (sem iniciar o Minecraft).
+tasks.register('apiServidorTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cataglifoMod.corpo.ApiServidorTest'
+}
+tasks.named('check') { dependsOn 'controleAcaoTest', 'apiServidorTest' }
 
 // O harness acima possui main(), não é um teste JUnit: é executado por JavaExec.
 // Evita que o runner padrão tente descobri-lo como teste sem framework JUnit.
-tasks.named('test') { exclude '**/ControleAcaoTest.class' }
+tasks.named('test') { exclude '**/ControleAcaoTest.class', '**/ApiServidorTest.class' }
