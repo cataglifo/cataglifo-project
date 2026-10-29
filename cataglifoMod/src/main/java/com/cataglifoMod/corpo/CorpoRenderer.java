@@ -14,7 +14,7 @@ import net.minecraft.client.renderer.entity.state.HumanoidRenderState;
 public class CorpoRenderer extends HumanoidMobRenderer<CorpoEntity, HumanoidRenderState, HumanoidModel<HumanoidRenderState>> {
 
     private static final Identifier TEXTURA =
-            Identifier.withDefaultNamespace("textures/entity/zombie/zombie.png");
+            Identifier.fromNamespaceAndPath("cataglifo", "textures/entity/cataglyphis-bicolor.png");
 
     public CorpoRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new HumanoidModel<>(ctx.bakeLayer(ModelLayers.ZOMBIE)), 0.5F);
