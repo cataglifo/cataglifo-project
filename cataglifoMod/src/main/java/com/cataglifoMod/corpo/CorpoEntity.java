@@ -180,6 +180,7 @@ public class CorpoEntity extends PathfinderMob {
     public void tick() {
         super.tick();
         if (level().isClientSide()) return;
+        aplicarOrientacao(); // reaplica yaw/pitch depois do LookControl
         // Diagnóstico opt-in em DEBUG: não gerar 15 raios por entidade só para log INFO.
         // Depois, trocar por envio via socket para o Python.
         if (tickCount % 20 == 0 && CorpoMod.LOGGER.isDebugEnabled()) {
