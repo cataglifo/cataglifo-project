@@ -16,6 +16,9 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
+
 /*
  * Corpo da IA. Estende PathfinderMob e NÃO adiciona nenhum goal,
  * então o mob fica parado até a IA mandar uma ação.
@@ -32,6 +35,11 @@ public class CorpoEntity extends PathfinderMob {
     // Mantém a orientação própria e expira comandos mesmo sem conexão Python.
     private final ControleAcao controle = new ControleAcao();
     private boolean iniciado;
+
+    // ---- API para o agente externo (ver ApiAgente) ----
+    private Vec3 casa;                           // primeira posição vista; destino do /reset padrão
+    private float casaYaw;
+    private CompletableFuture<String> passoPendente; // resposta do /passo em andamento (só no servidor)
 
     public CorpoEntity(EntityType<? extends PathfinderMob> type, Level level) {
         super(type, level);
@@ -120,6 +128,53 @@ public class CorpoEntity extends PathfinderMob {
         controle.avancar();
     }
 
+    // ================= API (agente externo) =================
+
+    /** Agenda {@code tarefa} na thread do servidor; pode ser chamado de qualquer thread. */
+    <T> CompletableFuture<T> noServidor(Supplier<T> tarefa) {
+        CompletableFuture<T> futuro = new CompletableFuture<>();
+        if (!(level() instanceof ServerLevel servidor)) {
+            futuro.completeExceptionally(new IllegalStateException("Corpo fora do servidor"));
+            return futuro;
+        }
+        servidor.getServer().execute(() -> {
+            try {
+                futuro.complete(tarefa.get());
+            } catch (Throwable erro) {
+                futuro.completeExceptionally(erro);
+            }
+        });
+        return futuro;
+    }
+
+    /**
+     * Aplica a ação e devolve um futuro que completa com a observação (JSON) quando os ticks da
+     * ação terminam ou o corpo morre. Um passo novo substitui o anterior. Só na thread do servidor.
+     */
+    CompletableFuture<String> iniciarPasso(float frente, float lado, float giraYaw, float giraPitch,
+                                           boolean pular, int ticks) {
+        exigirServidor();
+        definirAcao(frente, lado, giraYaw, giraPitch, pular, ticks); // valida antes de mexer no passo
+        cancelarPasso("Substituído por um passo mais novo");
+        CompletableFuture<String> futuro = new CompletableFuture<>();
+        passoPendente = futuro;
+        return futuro;
+    }
+
+    void cancelarPasso(String motivo) {
+        if (passoPendente != null) {
+            passoPendente.completeExceptionally(new IllegalStateException(motivo));
+            passoPendente = null;
+        }
+    }
+
+    /** Reset pedido pela API: sem destino, volta ao ponto onde o corpo foi visto pela primeira vez. */
+    void reiniciarApi(Vec3 destino, Float yaw) {
+        exigirServidor();
+        cancelarPasso("Passo interrompido por /reset");
+        resetarCorpo(destino != null ? destino : casa, yaw != null ? yaw : casaYaw);
+    }
+
     // ================= OLHOS =================
 
     public JsonObject montarObservacao() {
@@ -127,6 +182,8 @@ public class CorpoEntity extends PathfinderMob {
         inicializarOrientacao();
         JsonObject obs = new JsonObject();
         obs.addProperty("schemaVersion", 2);
+        obs.addProperty("id", getId());          // para escolher o corpo na API (?corpo=ID)
+        obs.addProperty("tick", tickCount);      // ticks de vida da entidade; ajuda a descartar leituras velhas
         obs.addProperty("acaoAtiva", controle.ativa());
         obs.addProperty("morto", !isAlive());
         obs.addProperty("x", getX());
@@ -181,8 +238,18 @@ public class CorpoEntity extends PathfinderMob {
         super.tick();
         if (level().isClientSide()) return;
         aplicarOrientacao(); // reaplica yaw/pitch depois do LookControl
+        if (casa == null) {
+            casa = position();
+            casaYaw = getYRot();
+        }
+        ApiAgente.registrar(this); // sobe a API HTTP na primeira vez
+        // Fecha o /passo quando a ação expira ou o corpo morre (a resposta já inclui "morto").
+        if (passoPendente != null && (!controle.ativa() || !isAlive())) {
+            CompletableFuture<String> futuro = passoPendente;
+            passoPendente = null;
+            futuro.complete(montarObservacao().toString());
+        }
         // Diagnóstico opt-in em DEBUG: não gerar 15 raios por entidade só para log INFO.
-        // Depois, trocar por envio via socket para o Python.
         if (tickCount % 20 == 0 && CorpoMod.LOGGER.isDebugEnabled()) {
             CorpoMod.LOGGER.debug("[corpo] {}", montarObservacao());
         }
