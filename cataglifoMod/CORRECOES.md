@@ -37,6 +37,12 @@ As mudanças foram feitas com assistência de IA e possuem comentários no códi
 - `CataglifoModExample` foi marcado como protótipo histórico incompleto.
   Nenhum código dessa pasta entra no build independente de `cataglifoMod`.
 
+## Pitch e skin
+
+- `CorpoEntity.tick()`: a orientação é reaplicada depois do LookControl, que zerava o
+  xRot a cada tick e impedia o modelo de olhar para cima e para baixo.
+- Nova skin `cataglyphis-bicolor.png`, usada pelo `CorpoRenderer`.
+
 ## Testes automatizados
 
 `ControleAcaoTest` cobre expiração, duração de um tick, salto de um único pulso,
