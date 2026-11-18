@@ -35,9 +35,20 @@ class GridWorld:
         for dr, dc in ACTIONS:
             nr, nc = r + dr, c + dc
             walls.append(float(not (0 <= nr < rows and 0 <= nc < cols) or self.grid[nr][nc] == '#'))
-        return np.array([r / max(rows-1, 1), c / max(cols-1, 1),
+        # Memória de exploração: quais vizinhos já foram visitados e o mapa
+        # completo de casas visitadas. Sem isso o agente só conhece a fração
+        # visitada e não distingue casa nova de casa repetida (gera vai-e-volta).
+        neighbor_visited = [float((r + dr, c + dc) in self.visited) for dr, dc in ACTIONS]
+        visited_map = np.zeros(rows * cols, dtype=np.float32)
+        for vr, vc in self.visited:
+            visited_map[vr * cols + vc] = 1.0
+        position_map = np.zeros(rows * cols, dtype=np.float32)
+        position_map[r * cols + c] = 1.0
+        base = np.array([r / max(rows-1, 1), c / max(cols-1, 1),
                          self.goal[0] / max(rows-1, 1), self.goal[1] / max(cols-1, 1),
-                         *walls, len(self.visited) / (rows * cols), self.steps / self.max_steps], dtype=np.float32)
+                         *walls, len(self.visited) / (rows * cols), self.steps / self.max_steps,
+                         *neighbor_visited], dtype=np.float32)
+        return np.concatenate([base, visited_map, position_map])
 
     def step(self, action):
         if not isinstance(action, (int, np.integer)) or not 0 <= action < len(ACTIONS):

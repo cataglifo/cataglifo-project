@@ -12,7 +12,8 @@ def make_map(tmp_path, grid, max_steps=20):
 
 def test_reset_and_wall(tmp_path):
     env = GridWorld(make_map(tmp_path, ['#####', '#S.G#', '#####']))
-    assert env.state().shape == (10,)
+    rows, cols = len(env.grid), len(env.grid[0])
+    assert env.state().shape == (14 + 2 * rows * cols,)
     _, reward, term, trunc, info = env.step(0)
     assert info['blocked'] and reward < 0 and not term and not trunc
 

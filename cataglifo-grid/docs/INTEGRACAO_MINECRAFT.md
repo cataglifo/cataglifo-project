@@ -29,7 +29,7 @@ python run_minecraft.py --passos 200 --reset --log outputs/observacoes.jsonl
 
 Estado (33 floats em [0, 1]): 15 distâncias normalizadas dos raios, 15 marcadores de perigo
 (lava, fogo, magma, cacto), `noChao`, `emLava` e `vida/20`. Ações: `frente`, `girar_esquerda`,
-`girar_direita`, `pular_frente`. São diferentes do protótipo 2D (10 números, 4 direções):
+`girar_direita`, `pular_frente`. São diferentes do protótipo 2D (estado do grid com memória de exploração, 4 direções):
 **o modelo treinado no GridWorld não serve aqui**, e `DQNAgent.load` recusa o checkpoint.
 
 ## Próximos passos para treinar de verdade
