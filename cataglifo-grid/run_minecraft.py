@@ -55,10 +55,12 @@ def main():
         arquivo = args.log.open('a', encoding='utf-8')
     if args.metricas_csv:
         args.metricas_csv.parent.mkdir(parents=True, exist_ok=True)
-        arquivo_csv = args.metricas_csv.open('w', encoding='utf-8', newline='')
+        # Excel em instalações pt-BR usa ponto e vírgula como separador de colunas.
+        # O BOM faz o programa reconhecer UTF-8 ao abrir o arquivo diretamente.
+        arquivo_csv = args.metricas_csv.open('w', encoding='utf-8-sig', newline='')
         colunas = ('passo', 'acao', 'recompensa', 'pontuacao_acumulada', 'regioes_visitadas',
                    'regiao_x', 'regiao_z', 'x', 'y', 'z', 'vida', 'morto')
-        metricas = csv.DictWriter(arquivo_csv, fieldnames=colunas)
+        metricas = csv.DictWriter(arquivo_csv, fieldnames=colunas, delimiter=';')
         metricas.writeheader()
 
     try:

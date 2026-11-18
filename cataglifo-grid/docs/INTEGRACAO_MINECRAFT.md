@@ -50,7 +50,9 @@ região inicial já começa registrada. Depois de cada ação, a transição rec
 Girar sem mudar X/Z não conta como revisita, mas ainda tem o custo de ação. A pontuação e o
 número de regiões aparecem no terminal. `--metricas-csv` cria um arquivo novo com passo,
 ação, recompensa, pontuação acumulada, região, posição, vida e estado de morte; ele pode ser
-aberto em uma planilha para produzir gráficos. `--log` continua disponível separadamente
+aberto em uma planilha para produzir gráficos. O arquivo usa ponto e vírgula como separador,
+para que cada campo seja aberto em uma coluna nas configurações brasileiras do Excel e de
+programas semelhantes. `--log` continua disponível separadamente
 para registrar as observações completas em JSON Lines.
 
 As recompensas são somente métricas nesta fase: elas não alteram a política reativa nem são
