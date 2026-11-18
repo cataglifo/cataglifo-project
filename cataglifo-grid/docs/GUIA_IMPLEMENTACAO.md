@@ -7,7 +7,7 @@ Implementar um protótipo de agente de **aprendizado por reforço profundo** (Do
 ## 2. Arquitetura
 
 ```text
-Mapa JSON -> GridWorld -> vetor de estado (10 números)
+Mapa JSON -> GridWorld -> vetor de estado (14 + 2 × linhas × colunas números)
                           -> DQNAgent -> ação (0..3)
                           -> GridWorld.step -> recompensa, próximo estado, término
                           -> ReplayBuffer -> treino da rede online
@@ -31,7 +31,7 @@ Na futura integração, o Forge deverá fornecer um vetor compatível ou será n
 
 ## 4. Estado e ações
 
-O estado é um vetor de **10 números float32**, nesta ordem:
+O estado é um vetor de **float32** com `14 + 2 × linhas × colunas` números (194 no mapa padrão de 9×10), nesta ordem:
 
 1. linha normalizada;
 2. coluna normalizada;
@@ -42,7 +42,14 @@ O estado é um vetor de **10 números float32**, nesta ordem:
 7. parede à esquerda (0/1);
 8. parede à direita (0/1);
 9. proporção de células únicas visitadas em relação à área total;
-10. fração do limite de passos consumida.
+10. fração do limite de passos consumida;
+11–14. vizinho acima, abaixo, à esquerda e à direita já visitado (0/1);
+15. mapa de células visitadas, achatado linha a linha (`linhas × colunas` valores 0/1);
+16. mapa da posição atual, achatado (`linhas × colunas` valores, um único 1).
+
+Os itens 11–16 são a **memória de exploração**. Sem eles o agente só conhecia a proporção de células visitadas e não sabia *quais* eram, por isso aprendia a ir e voltar entre as mesmas casas. No mapa padrão, com os mesmos 600 episódios e as mesmas recompensas, o episódio avaliado passou de 105 passos, 32 de 51 células e 71 movimentos de vai-e-volta imediato (A→B→A) para 57 passos, 48 de 51 células e 3 vai-e-volta.
+
+Como o estado depende do tamanho do mapa, um modelo treinado em um mapa só pode ser usado em mapas com as mesmas dimensões. Checkpoints da versão anterior (estado de 10 números) não são compatíveis e precisam ser treinados de novo.
 
 Ações: `0=cima`, `1=baixo`, `2=esquerda`, `3=direita`. **Esses valores são do protótipo 2D e não representam ainda comandos reais do Minecraft.**
 
@@ -108,7 +115,7 @@ O treinamento cria `outputs/final.pt`, `outputs/best.pt` e `outputs/metrics.csv`
 
 ## 7. Como explicar na apresentação do TCC
 
-> Nosso agente utiliza aprendizado por reforço profundo. Em cada passo, o ambiente fornece dez características numéricas. Uma rede neural estima o valor esperado de quatro ações. O agente seleciona uma ação, recebe uma recompensa e armazena a experiência. Durante o treinamento, amostras dessas experiências atualizam a rede. Utilizamos uma rede-alvo para estabilizar as estimativas e Double DQN para reduzir a superestimação dos valores de ação. Primeiro validamos o método em um mapa controlado; depois pretendemos adaptar o estado, as ações e o transporte de mensagens para o mod Forge.
+> Nosso agente utiliza aprendizado por reforço profundo. Em cada passo, o ambiente fornece características numéricas da posição, das paredes vizinhas e de uma memória das células já visitadas. Uma rede neural estima o valor esperado de quatro ações. O agente seleciona uma ação, recebe uma recompensa e armazena a experiência. Durante o treinamento, amostras dessas experiências atualizam a rede. Utilizamos uma rede-alvo para estabilizar as estimativas e Double DQN para reduzir a superestimação dos valores de ação. Primeiro validamos o método em um mapa controlado; depois pretendemos adaptar o estado, as ações e o transporte de mensagens para o mod Forge.
 
 **Fórmula do alvo:** `y = r + gamma * (1 - done) * Q_target(s', argmax_a Q_online(s', a))`.
 
@@ -140,6 +147,6 @@ Execute avaliações em mapas diferentes para verificar generalização. O prot�
 
 - A avaliação é determinística no mesmo mapa e modelo, portanto 20 episódios repetidos não equivalem a 20 cenários independentes.
 - O treino trata `truncated` como terminal no alvo TD; essa é uma simplificação que pode ser revista.
-- O estado não registra todas as células visitadas individualmente, apenas a contagem agregada; isso pode limitar a capacidade de evitar revisitas.
+- A memória de exploração é um mapa do tamanho do grid; o modelo não se transfere para mapas de outras dimensões. Uma memória local (vizinhança fixa ao redor do agente) seria uma alternativa independente do mapa.
 - O protótipo usa CPU por padrão. A seleção de GPU ainda não está automatizada.
 - O código não foi comprovado em execução real só por ter sido gerado. Resultados dependem de teste e treinamento.
