@@ -1,7 +1,7 @@
 # Cataglifo
 
 > **README provisório — documento sujeito a alterações conforme o projeto evolui.**  
-> Este arquivo representa apenas a visão inicial do Cataglifo e será refinado ao longo das próximas sprints, conforme decisões técnicas, experimentos e mudanças de escopo forem consolidados.
+> Este arquivo representa a evolução inicial do Cataglifo e será refinado ao longo das próximas sprints, conforme decisões técnicas, experimentos e mudanças de escopo forem consolidados.
 
 ---
 
@@ -55,11 +55,16 @@ Nesta fase inicial, o projeto pretende:
 
 ## Estado atual
 
-> **Fase atual: Fundação técnica / definição inicial**
+> **Fase atual: integração e avaliação inicial no Minecraft**
 
-O projeto ainda se encontra em fase de estruturação.
+O repositório possui um protótipo Double DQN para o ambiente 2D e uma integração Python com
+o corpo controlado pelo mod do Minecraft. A execução no Minecraft usa uma política reativa
+e registra recompensas de exploração, pontuação acumulada e métricas em CSV.
 
-Até o momento, foram definidas algumas ferramentas iniciais de desenvolvimento, enquanto decisões relacionadas ao método de aprendizado, arquitetura final do agente, ambiente de interação e métricas ainda estão em estudo.
+As recompensas ainda são usadas somente para observar e comparar execuções: elas não alteram
+as decisões do agente e não estão conectadas ao treinamento DQN. Consulte
+[`cataglifo-grid/docs/INTEGRACAO_MINECRAFT.md`](cataglifo-grid/docs/INTEGRACAO_MINECRAFT.md)
+para executar a integração e conhecer as regras de pontuação.
 
 Por esse motivo, **este README não deve ser interpretado como documentação definitiva do projeto**.
 

@@ -30,4 +30,15 @@ python visualize.py --random --speed 0.3
 
 Consulte também [`docs/VISUALIZACAO_TERMINAL.md`](docs/VISUALIZACAO_TERMINAL.md) para animação, controles e treinamento visual.
 
-**Escopo:** implementação Python; **não** inclui servidor de comunicação, mod Forge ou validação de desempenho no Minecraft.
+## Execução no Minecraft
+
+Com o mod e o corpo em execução, a integração Python pode movimentar o agente, calcular a
+pontuação de exploração e exportar métricas por passo:
+
+```bash
+python run_minecraft.py --passos 200 --metricas-csv outputs/metricas.csv
+```
+
+Consulte [`docs/INTEGRACAO_MINECRAFT.md`](docs/INTEGRACAO_MINECRAFT.md) para preparar o mod,
+ver as regras de recompensa e conhecer as limitações desta fase. A recompensa ainda serve
+somente para avaliação: ela não está ligada ao treinamento DQN.
