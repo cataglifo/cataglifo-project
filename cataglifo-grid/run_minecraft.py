@@ -4,17 +4,20 @@ Com o jogo aberto e o corpo invocado (/summon cataglifo:corpo ~ ~ ~):
 
     python run_minecraft.py --passos 200
     python run_minecraft.py --passos 200 --log outputs/observacoes.jsonl
+    python run_minecraft.py --passos 200 --metricas-csv outputs/metricas.csv
     python run_minecraft.py --modelo outputs/minecraft.pt     # DQN treinado com o estado do Minecraft
 
 No single-player o menu de pausa congela o servidor: aperte F3+P no jogo para ele não
 pausar ao perder o foco, senão os passos expiram por timeout.
 """
 import argparse
+import csv
 import json
 from pathlib import Path
 
 from cataglifo.minecraft_client import ApiIndisponivel, CorpoClient, ErroApi, URL_PADRAO
 from cataglifo.minecraft_policy import escolher_acao
+from cataglifo.minecraft_reward import RecompensaMinecraft
 from cataglifo.minecraft_state import ACOES, TAMANHO_ESTADO, acao_para_passo, codificar_estado
 
 
@@ -35,6 +38,8 @@ def main():
     p.add_argument('--modelo', type=Path, default=None, help='checkpoint DQN; sem ele usa a política reativa')
     p.add_argument('--reset', action='store_true', help='volta ao ponto inicial antes de começar')
     p.add_argument('--log', type=Path, default=None, help='grava (observação, ação) por passo em JSON Lines')
+    p.add_argument('--metricas-csv', type=Path, default=None,
+                   help='exporta recompensa e estado de cada passo em CSV')
     p.add_argument('--timeout', type=float, default=15.0)
     args = p.parse_args()
     if args.passos < 1:
@@ -43,12 +48,22 @@ def main():
     cliente = CorpoClient(args.url, corpo=args.corpo, timeout=args.timeout)
     decidir = criar_decisor(args.modelo)
     arquivo = None
+    arquivo_csv = None
+    metricas = None
     if args.log:
         args.log.parent.mkdir(parents=True, exist_ok=True)
         arquivo = args.log.open('a', encoding='utf-8')
+    if args.metricas_csv:
+        args.metricas_csv.parent.mkdir(parents=True, exist_ok=True)
+        arquivo_csv = args.metricas_csv.open('w', encoding='utf-8', newline='')
+        colunas = ('passo', 'acao', 'recompensa', 'pontuacao_acumulada', 'regioes_visitadas',
+                   'regiao_x', 'regiao_z', 'x', 'y', 'z', 'vida', 'morto')
+        metricas = csv.DictWriter(arquivo_csv, fieldnames=colunas)
+        metricas.writeheader()
 
     try:
         obs = cliente.reset() if args.reset else cliente.observar()
+        recompensas = RecompensaMinecraft(obs)
         for n in range(1, args.passos + 1):
             if obs['morto']:
                 print('O corpo morreu; invoque outro com /summon e rode de novo.')
@@ -57,9 +72,29 @@ def main():
             comando = acao_para_passo(acao)
             if arquivo:
                 arquivo.write(json.dumps({'passo': n, 'acao': int(acao), 'obs': obs}, ensure_ascii=False) + '\n')
+            obs_anterior = obs
             obs = cliente.passo(**comando)
+            resultado = recompensas.calcular(obs_anterior, obs)
+            if metricas:
+                metricas.writerow({
+                    'passo': n,
+                    'acao': ACOES[acao],
+                    'recompensa': resultado.total,
+                    'pontuacao_acumulada': recompensas.pontuacao,
+                    'regioes_visitadas': resultado.total_regioes,
+                    'regiao_x': resultado.regiao[0],
+                    'regiao_z': resultado.regiao[1],
+                    'x': obs['x'],
+                    'y': obs['y'],
+                    'z': obs['z'],
+                    'vida': obs['vida'],
+                    'morto': bool(obs['morto']),
+                })
+                arquivo_csv.flush()
             print(f"passo {n:4d} | {ACOES[acao]:<15} | x={obs['x']:.1f} z={obs['z']:.1f} "
-                  f"yaw={obs['yaw']:.0f} vida={obs['vida']:.0f} chão={obs['noChao']}")
+                  f"yaw={obs['yaw']:.0f} vida={obs['vida']:.0f} chão={obs['noChao']} | "
+                  f"recompensa={resultado.total:+.2f} "
+                  f"pontuação={recompensas.pontuacao:.2f} regiões={resultado.total_regioes}")
     except (ApiIndisponivel, ErroApi) as erro:
         print('Erro:', erro)
         return 1
@@ -72,6 +107,8 @@ def main():
     finally:
         if arquivo:
             arquivo.close()
+        if arquivo_csv:
+            arquivo_csv.close()
     return 0
 
 

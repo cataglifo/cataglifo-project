@@ -13,6 +13,7 @@ O mod (branch `modMine`, pasta `cataglifoMod/`, arquivo `API.md`) expõe o corpo
 ```bash
 python run_minecraft.py --passos 200
 python run_minecraft.py --passos 200 --reset --log outputs/observacoes.jsonl
+python run_minecraft.py --passos 200 --metricas-csv outputs/metricas.csv
 ```
 
 ## Arquivos
@@ -22,6 +23,7 @@ python run_minecraft.py --passos 200 --reset --log outputs/observacoes.jsonl
 | `cataglifo/minecraft_client.py` | Cliente HTTP: `observar()`, `passo(...)`, `parar()`, `reset(...)` |
 | `cataglifo/minecraft_state.py` | Observação -> vetor de `TAMANHO_ESTADO` (33) números; índice da ação -> comando |
 | `cataglifo/minecraft_policy.py` | Política reativa de referência (sem aprendizado) |
+| `cataglifo/minecraft_reward.py` | Pontuação de exploração, dano e morte; registro das regiões visitadas |
 | `run_minecraft.py` | Laço observar -> decidir -> agir, com log opcional em JSON Lines |
 | `tests/test_minecraft.py` | Testes sem jogo: estado, política e cliente contra um servidor falso |
 
@@ -32,9 +34,31 @@ Estado (33 floats em [0, 1]): 15 distâncias normalizadas dos raios, 15 marcador
 `girar_direita`, `pular_frente`. São diferentes do protótipo 2D (10 números, 4 direções):
 **o modelo treinado no GridWorld não serve aqui**, e `DQNAgent.load` recusa o checkpoint.
 
+## Recompensas e métricas
+
+Cada região corresponde a uma área de 16 x 16 blocos, alinhada às chunks do Minecraft. A
+região inicial já começa registrada. Depois de cada ação, a transição recebe:
+
+| Evento | Recompensa |
+|---|---:|
+| Entrar em uma região ainda não visitada | `+1,00` |
+| Deslocar-se dentro de uma região já visitada | `-0,10` |
+| Executar qualquer ação | `-0,01` |
+| Perder vida | `-1,00` por ponto |
+| Morrer | `-10,00` |
+
+Girar sem mudar X/Z não conta como revisita, mas ainda tem o custo de ação. A pontuação e o
+número de regiões aparecem no terminal. `--metricas-csv` cria um arquivo novo com passo,
+ação, recompensa, pontuação acumulada, região, posição, vida e estado de morte; ele pode ser
+aberto em uma planilha para produzir gráficos. `--log` continua disponível separadamente
+para registrar as observações completas em JSON Lines.
+
+As recompensas são somente métricas nesta fase: elas não alteram a política reativa nem são
+enviadas ao `DQNAgent`.
+
 ## Próximos passos para treinar de verdade
 
-Falta um ambiente com `reset()` e `step()` que use `CorpoClient`, a função de recompensa,
-a definição de fim de episódio (morte, tempo, objetivo) e o respawn no mod. A política
+Falta um ambiente de treinamento com episódios que use `CorpoClient`, envie a recompensa ao
+agente e trate o respawn no mod. A política
 reativa serve de linha de base para comparar com o DQN. Os limiares dela (`FOLGA_PAREDE`,
 `TOLERANCIA_BURACO`) são hipóteses e precisam ser calibrados no jogo.
